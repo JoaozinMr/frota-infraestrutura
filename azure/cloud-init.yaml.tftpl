@@ -1,0 +1,39 @@
+#cloud-config
+# Renderizado pelo Terraform (templatefile). Log da execução: /var/log/cloud-init-output.log
+package_update: true
+packages:
+  - git
+  - make
+  - ca-certificates
+  - curl
+
+write_files:
+  # Variáveis lidas pelo docker compose (.env no diretório do projeto).
+  - path: /opt/frota.env
+    permissions: '0600'
+    content: |
+      GRAFANA_ADMIN_PASSWORD=${grafana_admin_password}
+      SIM_NUM_VEICULOS=${sim_num_veiculos}
+      SIM_INTERVALO_SEGUNDOS=${sim_intervalo_segundos}
+
+  # B2s tem 4 GiB: swap evita OOM durante o build das imagens .NET.
+  - path: /etc/sysctl.d/99-frota.conf
+    content: |
+      vm.swappiness=10
+      fs.file-max=200000
+      net.core.somaxconn=4096
+
+runcmd:
+  - [bash, -c, 'fallocate -l 4G /swapfile && chmod 600 /swapfile && mkswap /swapfile && swapon /swapfile && echo "/swapfile none swap sw 0 0" >> /etc/fstab']
+  - [sysctl, --system]
+  # Docker Engine + plugin compose (script oficial).
+  - [bash, -c, 'curl -fsSL https://get.docker.com | sh']
+  - [usermod, -aG, docker, ${admin_username}]
+  - [systemctl, enable, --now, docker]
+  - [git, clone, --branch, ${infra_repo_branch}, ${infra_repo_url}, /opt/frota]
+  - [mv, /opt/frota.env, /opt/frota/.env]
+  - [chown, -R, '${admin_username}:${admin_username}', /opt/frota]
+  - [bash, -c, 'cd /opt/frota && make up > /var/log/frota-make-up.log 2>&1']
+  - [chown, -R, '${admin_username}:${admin_username}', /opt/frota]
+
+final_message: 'Frota pronta após $UPTIME s. Log do make up: /var/log/frota-make-up.log'

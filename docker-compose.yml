@@ -1,0 +1,226 @@
+# Ambiente completo do monitoramento de frota. Suba com `make up` (clona os repositórios
+# dos serviços em ${REPOS_DIR} e executa `docker compose up -d --build`).
+#
+# Portas publicadas: 80 (Nginx), 3000 (Grafana) e 127.0.0.1:8088 (Redpanda Console).
+# Redpanda, Redis e PostgreSQL ficam só na rede interna, sem porta no host.
+name: frota
+
+x-dotnet-logging: &logging
+  driver: json-file
+  options:
+    max-size: 20m
+    max-file: '3'
+
+services:
+  # ---------- Message broker ----------
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.3.1
+    command:
+      - redpanda
+      - start
+      - --mode
+      - dev-container
+      - --smp
+      - '1'
+      - --memory
+      - 1G
+      - --kafka-addr
+      - internal://0.0.0.0:9092
+      - --advertise-kafka-addr
+      - internal://redpanda:9092
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: [ 'CMD', 'rpk', 'cluster', 'health', '--exit-when-healthy' ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    logging: *logging
+    restart: unless-stopped
+
+  # A API de Ingestão usa AllowAutoCreateTopics=false: os tópicos precisam existir antes.
+  # 6 partições: 3 por réplica do Worker; com uma réplica parada, a sobrevivente assume as 6.
+  # Retenção limitada (laboratório): telemetria 2h ou 256 MB por partição; DLQ 24h ou 64 MB.
+  init-topics:
+    image: docker.redpanda.com/redpandadata/redpanda:v24.3.1
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    entrypoint: [ '/bin/sh', '-c' ]
+    command:
+      - >-
+        (rpk topic describe frota.telemetria -X brokers=redpanda:9092 >/dev/null 2>&1 || rpk topic create frota.telemetria -p 6 -r 1 -c retention.ms=7200000 -c retention.bytes=268435456 -X brokers=redpanda:9092) && (rpk topic describe frota.telemetria.dlq -X brokers=redpanda:9092 >/dev/null 2>&1 || rpk topic create frota.telemetria.dlq -p 6 -r 1 -c retention.ms=86400000 -c retention.bytes=67108864 -X brokers=redpanda:9092)
+
+  # Interface de gerência: consumer group, lag por partição e rebalanceamento (roteiro de falha).
+  redpanda-console:
+    image: docker.redpanda.com/redpandadata/console:v2.8.0
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+    ports:
+      - '127.0.0.1:8088:8080'
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    logging: *logging
+    restart: unless-stopped
+
+  # ---------- Bancos ----------
+  redis:
+    image: redis:7.4-alpine
+    command: [ 'redis-server', '--save', '', '--appendonly', 'no' ]
+    healthcheck:
+      test: [ 'CMD', 'redis-cli', 'ping' ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging: *logging
+    restart: unless-stopped
+
+  postgres:
+    # TimescaleDB: a tabela telemetria vira hypertable (o Worker cai para tabela comum sem ele).
+    image: timescale/timescaledb:2.17.2-pg16
+    environment:
+      POSTGRES_DB: frota
+      POSTGRES_USER: frota
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-frota}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      # Arquivo único: montar o diretório esconderia os scripts de instalação do TimescaleDB.
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/100_frota_init.sql:ro
+    healthcheck:
+      test: [ 'CMD-SHELL', 'pg_isready -U frota -d frota' ]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    logging: *logging
+    restart: unless-stopped
+
+  # ---------- Serviços da aplicação ----------
+  api-ingestao:
+    build: ${REPOS_DIR:-./.repos}/frota-api-ingestao
+    image: frota/api-ingestao:local
+    deploy:
+      replicas: 2
+    environment:
+      Kafka__BootstrapServers: redpanda:9092
+      Kafka__Topic: frota.telemetria
+      Kafka__DlqTopic: frota.telemetria.dlq
+    depends_on:
+      init-topics:
+        condition: service_completed_successfully
+    logging: *logging
+    restart: unless-stopped
+
+  worker:
+    build: ${REPOS_DIR:-./.repos}/frota-worker-processamento
+    image: frota/worker-processamento:local
+    # Mesmo GroupId nas duas réplicas: o Redpanda divide as 6 partições entre elas.
+    deploy:
+      replicas: 2
+    environment:
+      Kafka__BootstrapServers: redpanda:9092
+      Kafka__GroupId: frota-worker-processamento
+      Kafka__Topic: frota.telemetria
+      Kafka__DlqTopic: frota.telemetria.dlq
+      Redis__ConnectionString: redis:6379
+      Postgres__ConnectionString: Host=postgres;Port=5432;Database=frota;Username=frota;Password=${POSTGRES_PASSWORD:-frota}
+      Alertas__BaseUrl: http://api-alertas:8080
+    depends_on:
+      init-topics:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      api-alertas:
+        condition: service_started
+    logging: *logging
+    restart: unless-stopped
+
+  api-alertas:
+    build: ${REPOS_DIR:-./.repos}/frota-api-alertas
+    image: frota/api-alertas:local
+    environment:
+      Postgres__ConnectionString: Host=postgres;Port=5432;Database=frota;Username=frota;Password=${POSTGRES_PASSWORD:-frota}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging: *logging
+    restart: unless-stopped
+
+  # ---------- Load balancer ----------
+  nginx:
+    image: nginx:1.27.4-alpine
+    ports:
+      - '80:80'
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api-ingestao
+      - api-alertas
+    healthcheck:
+      test: [ 'CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1/nginx-health' ]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+    logging: *logging
+    restart: unless-stopped
+
+  # ---------- Painel ----------
+  grafana:
+    image: grafana/grafana:11.3.1
+    ports:
+      - '3000:3000'
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/frota.json
+      GF_USERS_DEFAULT_THEME: dark
+      GRAFANA_DB_PASSWORD: grafana_leitura
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging: *logging
+    restart: unless-stopped
+
+  # ---------- Simulador de carga ----------
+  # Sobe junto com `make up`; `make simulador-parar` / `make simulador` controlam a carga.
+  simulador:
+    build: ${REPOS_DIR:-./.repos}/frota-simulador-carga
+    image: frota/simulador-carga:local
+    environment:
+      SIM_TARGET_URL: http://nginx/api/telemetry
+      SIM_NUM_VEICULOS: ${SIM_NUM_VEICULOS:-1000}
+      SIM_INTERVALO_SEGUNDOS: ${SIM_INTERVALO_SEGUNDOS:-1}
+    depends_on:
+      nginx:
+        condition: service_healthy
+    logging: *logging
+    restart: unless-stopped
+
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: frota-portainer
+    restart: unless-stopped
+    # Faz o bind apenas no localhost da VM para obrigar o uso de túnel SSH (segurança)
+    ports:
+      - "127.0.0.1:9000:9000"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+
+networks:
+  default:
+    name: frota-net
+
+volumes:
+  redpanda-data:
+  postgres-data:
+  grafana-data:
+  portainer_data:

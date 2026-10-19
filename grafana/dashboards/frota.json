@@ -1,0 +1,759 @@
+{
+  "uid": "frota-monitoramento",
+  "title": "Frota — Monitoramento em tempo real",
+  "tags": [
+    "frota"
+  ],
+  "timezone": "browser",
+  "editable": false,
+  "graphTooltip": 1,
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "version": 1,
+  "time": {
+    "from": "now-15m",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": [
+      "5s",
+      "10s",
+      "30s",
+      "1m",
+      "5m"
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Eventos/s (último minuto)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "frota-postgres"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "frota-postgres"
+          },
+          "refId": "A",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) / 60.0 AS eventos_s FROM telemetria WHERE ts > now() - interval '65 seconds' AND ts <= now() - interval '5 seconds'"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "decimals": 0
+        },
+        "overrides": []
+      },
+      "description": "Leituras persistidas pelo Worker no último minuto (o batch é gravado a cada 2s; os últimos 5s são ignorados)."
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Caminhões transmitindo",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "frota-postgres"
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "frota-postgres"
+          },
+          "refId": "A",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(DISTINCT id_veiculo) FROM telemetria WHERE ts > now() - interval '30 seconds'"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "description": "Veículos com ao menos uma leitura nos últimos 30s."
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Alertas no período",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "frota-postgres"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "frota-postgres"
+          },
+          "refId": "A",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) FROM alertas WHERE $__timeFilter(\"timestamp\")"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Sensores mortos no período",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "frota-postgres"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "frota-postgres"
+          },
+          "refId": "A",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(DISTINCT id_veiculo) FROM alertas WHERE tipo_infracao = 'SENSOR_MORTO' AND $__timeFilter(\"timestamp\")"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Eventos duplicados",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "frota-postgres"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "frota-postgres"
+          },
+          "refId": "A",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) FROM (SELECT 1 FROM telemetria WHERE $__timeFilter(ts) GROUP BY id_evento, ts HAVING count(*) > 1) d"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 1
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "description": "Deve ser sempre 0: reentregas (retry do simulador, rebalanceamento do consumer group) são descartadas pelo índice único (id_evento, ts)."
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Alertas de geofence/velocidade (5 min)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "frota-postgres"
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "frota-postgres"
+          },
+          "refId": "A",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT count(*) FROM alertas WHERE tipo_infracao IN ('EXCESSO_VELOCIDADE','FORA_GEOFENCE') AND \"timestamp\" > now() - interval '5 minutes'"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "colorMode": "background",
+        "graphMode": "none",
+        "textMode": "value",
+        "justifyMode": "center"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "orange",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Vazão de telemetria persistida (eventos/s)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "frota-postgres"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "frota-postgres"
+          },
+          "refId": "A",
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(ts, '5s'), count(*) / 5.0 AS \"eventos/s\"\nFROM telemetria\nWHERE $__timeFilter(ts) AND ts < now() - interval '5 seconds'\nGROUP BY 1 ORDER BY 1"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 15,
+            "showPoints": "never",
+            "spanNulls": false
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      },
+      "description": "Picos orgânicos do simulador e do k6. Leituras atrasadas entram no intervalo do seu timestamp original."
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Alertas por tipo (por minuto)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "frota-postgres"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 9
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "frota-postgres"
+          },
+          "refId": "A",
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT $__timeGroupAlias(\"timestamp\", '1m'), tipo_infracao AS metric, count(*) AS value\nFROM alertas\nWHERE $__timeFilter(\"timestamp\")\nGROUP BY 1, 2 ORDER BY 1"
+        }
+      ],
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "drawStyle": "bars",
+            "fillOpacity": 70,
+            "stacking": {
+              "mode": "normal",
+              "group": "A"
+            },
+            "showPoints": "never"
+          },
+          "color": {
+            "mode": "palette-classic"
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 10,
+      "type": "geomap",
+      "title": "Posição atual dos caminhões (último minuto)",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "frota-postgres"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 13,
+        "w": 12,
+        "h": 13
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "frota-postgres"
+          },
+          "refId": "A",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT DISTINCT ON (id_veiculo) id_veiculo, latitude, longitude, velocidade, status_motor, ts\nFROM telemetria\nWHERE ts > now() - interval '1 minute'\nORDER BY id_veiculo, ts DESC"
+        }
+      ],
+      "options": {
+        "view": {
+          "id": "coords",
+          "lat": -23.5505,
+          "lon": -46.6333,
+          "zoom": 8.5,
+          "allLayers": true
+        },
+        "controls": {
+          "showZoom": true,
+          "mouseWheelZoom": true,
+          "showAttribution": true
+        },
+        "basemap": {
+          "type": "default",
+          "name": "Mapa",
+          "config": {}
+        },
+        "layers": [
+          {
+            "type": "markers",
+            "name": "Caminhões",
+            "tooltip": true,
+            "location": {
+              "mode": "coords",
+              "latitude": "latitude",
+              "longitude": "longitude"
+            },
+            "config": {
+              "showLegend": true,
+              "style": {
+                "size": {
+                  "fixed": 4
+                },
+                "color": {
+                  "field": "velocidade",
+                  "fixed": "green"
+                },
+                "opacity": 0.8,
+                "symbol": {
+                  "mode": "fixed",
+                  "fixed": "img/icons/marker/circle.svg"
+                }
+              }
+            }
+          }
+        ],
+        "tooltip": {
+          "mode": "details"
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "velocitykmh",
+          "color": {
+            "mode": "thresholds"
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "description": "Verde: até 80 km/h; vermelho: acima do limite. Geofence: 50 km do centro de São Paulo."
+    },
+    {
+      "id": 11,
+      "type": "table",
+      "title": "Últimos alertas",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "frota-postgres"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 13,
+        "w": 12,
+        "h": 13
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "frota-postgres"
+          },
+          "refId": "A",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT \"timestamp\" AS \"Quando\", id_veiculo AS \"Veículo\", tipo_infracao AS \"Tipo\", descricao AS \"Descrição\", correlation_id AS \"Correlation ID\"\nFROM alertas\nWHERE $__timeFilter(\"timestamp\")\nORDER BY \"timestamp\" DESC, id DESC\nLIMIT 100"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "filterable": true
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 12,
+      "type": "bargauge",
+      "title": "Alertas por tipo no período",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "frota-postgres"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 26,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "frota-postgres"
+          },
+          "refId": "A",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT tipo_infracao AS \"Tipo\", count(*) AS \"Alertas\"\nFROM alertas\nWHERE $__timeFilter(\"timestamp\")\nGROUP BY 1 ORDER BY 2 DESC"
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": true
+        },
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true,
+        "valueMode": "color"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "color": {
+            "mode": "continuous-YlRd"
+          },
+          "min": 0
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 13,
+      "type": "table",
+      "title": "Veículos com mais alertas",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "frota-postgres"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 26,
+        "w": 12,
+        "h": 7
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "frota-postgres"
+          },
+          "refId": "A",
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "SELECT id_veiculo AS \"Veículo\", count(*) AS \"Alertas\", string_agg(DISTINCT tipo_infracao, ', ') AS \"Tipos\", max(\"timestamp\") AS \"Último\"\nFROM alertas\nWHERE $__timeFilter(\"timestamp\")\nGROUP BY 1 ORDER BY 2 DESC, 1\nLIMIT 20"
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto"
+          }
+        },
+        "overrides": []
+      }
+    }
+  ],
+  "templating": {
+    "list": []
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": []
+}

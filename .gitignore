@@ -1,0 +1,18 @@
+# Clones gerados pelo `make up`
+.repos/
+
+.env
+.env.*
+!.env.example
+
+# Terraform
+azure/.terraform/
+azure/.terraform.lock.hcl
+azure/*.tfstate
+azure/*.tfstate.*
+azure/terraform.tfvars
+azure/crash.log
+
+.vs/
+.vscode/
+.idea/
