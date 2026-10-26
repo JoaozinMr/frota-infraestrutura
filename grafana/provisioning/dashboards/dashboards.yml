@@ -7,4 +7,5 @@ providers:
     disableDeletion: true
     allowUiUpdates: false
     options:
-      path: /etc/grafana/dashboards
+      # Gerado na subida do container a partir de /etc/grafana/dashboards-src (ver docker-compose.yml).
+      path: /tmp/grafana-dashboards

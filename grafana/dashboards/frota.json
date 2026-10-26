@@ -546,9 +546,12 @@
           "showAttribution": true
         },
         "basemap": {
-          "type": "default",
+          "type": "xyz",
           "name": "Mapa",
-          "config": {}
+          "config": {
+            "url": "__CARTO_BASEMAP_URL__",
+            "attribution": "© CARTO © OpenStreetMap contributors"
+          }
         },
         "layers": [
           {

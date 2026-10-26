@@ -176,12 +176,26 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_AUTH_ANONYMOUS_ENABLED: 'true'
       GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
-      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/frota.json
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /tmp/grafana-dashboards/frota.json
       GF_USERS_DEFAULT_THEME: dark
       GRAFANA_DB_PASSWORD: grafana_leitura
+      # URL dos tiles do mapa (com a chave da CARTO), definida no .env. Vazia = tiles públicos.
+      CARTO_BASEMAP_URL: ${CARTO_BASEMAP_URL:-}
+    # Copia os dashboards trocando __CARTO_BASEMAP_URL__ pela URL do .env, sem gravar a chave no git.
+    entrypoint: [ '/bin/sh', '-c' ]
+    command:
+      - >-
+        URL="$$CARTO_BASEMAP_URL";
+        [ -n "$$URL" ] || URL='https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png';
+        ESC=$$(printf '%s' "$$URL" | sed 's/[&|\\]/\\&/g');
+        mkdir -p /tmp/grafana-dashboards &&
+        for f in /etc/grafana/dashboards-src/*.json; do
+        sed "s|__CARTO_BASEMAP_URL__|$$ESC|g" "$$f" > "/tmp/grafana-dashboards/$$(basename "$$f")";
+        done &&
+        exec /run.sh
     volumes:
       - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards-src:ro
       - grafana-data:/var/lib/grafana
     depends_on:
       postgres:
